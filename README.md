@@ -6,6 +6,6 @@ Application Layer
 
 ###Assignment 1
 Building a Multi-Threaded Web Server
-See [lilhttpd](./lilhttpd)
+See [lilhttpd](kurose-ross/tree/master/lilhttpd)
 
-For license, see [COPYING](./COPYING)
+For license, see [COPYING](kurose-ross/tree/master/COPYING)

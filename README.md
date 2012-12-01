@@ -6,6 +6,6 @@ Application Layer
 
 ###Assignment 1
 Building a Multi-Threaded Web Server
-See [lilhttpd](lilhttpd)
+See [lilhttpd](./lilhttpd)
 
-For license, see [COPYING](/COPYING)
+For license, see [COPYING](./COPYING)

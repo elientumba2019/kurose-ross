@@ -5,7 +5,9 @@ Solutions to Kurose & Ross's _Computer Networking: A Top-Down Approach_
 Application Layer
 
 ###Assignment 1
-Building a Multi-Threaded Web Server
-See [lilhttpd](kurose-ross/tree/master/lilhttpd)
+Building a Multi-Threaded Web Server...
+[lilhttpd](kurose-ross/tree/master/2-1/)
+
+---
 
 For license, see [COPYING](kurose-ross/tree/master/COPYING)

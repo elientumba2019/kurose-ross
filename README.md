@@ -6,7 +6,7 @@ Application Layer
 
 ###Assignment 1
 Building a Multi-Threaded Web Server...
-[lilhttpd](kurose-ross/tree/master/2-1/)
+[lilhttpd](kurose-ross/tree/master/lilhttpd/)
 
 ---
 

@@ -1,3 +1,9 @@
+/* 
+ * A simple lil' HTTP server
+ * http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html
+ * Test with http://192.168.0.12:8000/index.html
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,29 +19,35 @@
 #define IP_ADDR "192.168.0.12"
 #define PORTNUM "8000"
 #define BACKLOG 8
-#define FBUFLEN 99999
 
-static const char *http_ack = "HTTP/1.1 200 OK\n\n";
-static const char *http_nack = "HTTP/1.1 404 Not Found\n";
+#define DEFAULT_MAXHEADERLINE 1024
+#define APACHE_MAXHEADERLINE 8192
+#define CRLF "\r\n"
+#define CRLFLEN 2
 
-/* 
- * A simple lil' HTTP server
- * http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html
- */
+#define VERBOSE
+#ifdef VERBOSE
+#define PRINT(format, arg...) printf(format, ##arg)
+#else
+#define PRINT(format, arg...) (void)0
+#endif
 
+static const char *http200 = "HTTP/1.1 200 OK\n\n";
+static const char *http404 = "HTTP/1.1 404 Not Found\n";
+
+int read_line(int, char *, int);
 #ifdef THREADED
 void * process_request(void *);
 #else
 int process_request(int *);
 #endif
-int read_line(int, char *, int);
 
 int
 main(void)
 {
     int status = 0;
     int sockfd, csock;
-    struct addrinfo hints, *servinfo;
+    struct addrinfo hints, *servinfo, *si;
     struct sockaddr_storage caddr;
 
     /* address information */
@@ -44,34 +56,44 @@ main(void)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
     if ((status = getaddrinfo(IP_ADDR, PORTNUM, &hints, &servinfo)) == -1) {
-        printf("getaddrinfo error: %s\n", gai_strerror(status));
+        PRINT("getaddrinfo error: %s\n", gai_strerror(status));
         status = 1;
         goto out;
     }
 
-    /* get default socket file descriptor */
-    if ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, 
-                         servinfo->ai_protocol)) == -1) {
-        perror("socket error");
-        status = 1;
-        goto out;
-    } else printf("server socket %d created\n", sockfd);
+    for (si = servinfo; si != NULL; si = si->ai_next) {
+        /* get default socket file descriptor */
+        if ((sockfd = socket(si->ai_family, si->ai_socktype, 
+                             si->ai_protocol)) == -1) {
+            perror("socket error");
+            continue;
+        } else PRINT("server socket %d created\n", sockfd);
 
-    /* bind socket, port */
-    int opt = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(int));
-    if (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) == -1) {
-        perror("bind error");
-        status = 1;
+        /* bind socket, port */
+        int opt = 1;
+        setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *) &opt,
+                   sizeof(int));
+        if (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) == -1) {
+            close(sockfd);
+            perror("bind error");
+            continue;
+        }
+
+        PRINT("bound socket %d to port %s\n", sockfd, PORTNUM);
+        break;
+    }
+    if (si == NULL) {
+        perror("could not find valid socket to bind");
+        status = 2;
         goto out;
-    } else printf("bind socket %d to port %s\n", sockfd, PORTNUM);
+    }
 
     /* begin listen */
     if (listen(sockfd, BACKLOG) == -1) {
         perror("listen error");
         status = 1;
-        goto out;
-    } else printf("listening...\n");
+        goto cleanup;
+    } else PRINT("listening...\n");
 
     socklen_t addr_size = sizeof(caddr);
 
@@ -80,12 +102,9 @@ main(void)
         /* accept incoming client request, generate client socket */
         if ((csock = accept(sockfd, (struct sockaddr *) &caddr, 
                             &addr_size)) == -1) {
-            //perror("accept error");
-            //status = 1;
-            //goto out;
             continue;
         } else {
-            printf("Ready to communicate on client socket %d\n", csock);
+            PRINT("Ready to communicate on client socket %d\n", csock);
         }
 
         /* create thread to handle client request */
@@ -93,20 +112,21 @@ main(void)
         pthread_t handle_request_thread;
         if (pthread_create(&handle_request_thread, NULL, process_request, &csock))
         {
-            perror("pthread error\n");
+            perror("pthread error");
         }
 #else
         process_request(&csock);
 #endif
         if (close(csock) < 0) {
-            perror("close client socket error\n");
+            perror("close client socket error");
             status = 1;
-            goto out;
+            goto cleanup;
         }
     }
 
-out:
+cleanup:
     close(sockfd);
+out:
     return status;
 }
 
@@ -137,47 +157,48 @@ read_line(int sock, char *buf, int len)
 }
 
 /*
+ */
+
+/*
  * Process the client's request
  */
 int
 process_request(int *client)
 {
-    char buf[1024];
+    char buf[DEFAULT_MAXHEADERLINE];
+    char file_buf[APACHE_MAXHEADERLINE];
     const int buflen = sizeof(buf);
     const char *resource = "index.html";
     FILE *fp;
-    //char url[256];
     //char path[512]; 
-    char file_buf[FBUFLEN+1];
     size_t nbytes = 0;
 
-    int nextline = 0, flag = 0;
-    while (nextline = read_line(*client, buf, buflen) > 0) {
-        printf("%s", buf);
-        if (buf[0] == '\r') break;//XXX
+    if (nbytes = read_line(*client, buf, buflen) > 0) {
+        PRINT("%s", buf);
+        /* check for resource request */
+        //parse_request(buf);//TODO
+
+        while ((nbytes = read_line(*client, buf, buflen)) > 0) {
+            PRINT("%s", buf);
+            /* check for end of HTTP request */
+            if (nbytes == CRLFLEN) {
+                if (strncmp(buf, CRLF, nbytes) == 0) {
+                    break;
+                }
+            }
+        }
     }
 
-    char c;
     if ((fp = fopen(resource, "r")) != NULL) {
-        send(*client, http_ack, strlen(http_ack), 0);
-        nbytes = fread(file_buf, sizeof(char), FBUFLEN, fp);
-        file_buf[nbytes+1] = '\0';
-        printf("%s\n", file_buf);
+        send(*client, http200, strlen(http200), 0);
+        nbytes = fread(file_buf, sizeof(char), APACHE_MAXHEADERLINE, fp);
+        file_buf[nbytes] = '\0';
+        PRINT("%s\n", file_buf);
         send(*client, file_buf, nbytes, 0);
-        /*while ((bytes_read=read(fd, data_to_send, BYTES))>0 )
-        write (clients[n], data_to_send, bytes_read);*/
         fclose(fp);
     } else {
-        send(*client, http_nack, strlen(http_nack), 0);
+        send(*client, http404, strlen(http404), 0);
     }
 
     return 0;
 }
-
-//http://www.cs.bu.edu/fac/matta/Teaching/CS552/F99/proj4/
-//https://github.com/AaronKalair/C-Web-Server
-//http://blog.eviac.com/2012/11/web-server-in-c.html
-//http://css.dzone.com/articles/web-server-c
-//http://www.paulgriffiths.net/program/c/srcs/webservsrc.html
-//http://blog.abhijeetr.com/2010/04/very-simple-http-server-writen-in-c.html
-//http://stackoverflow.com/questions/5594042/c-send-file-to-socket

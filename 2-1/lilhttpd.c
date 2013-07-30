@@ -171,7 +171,7 @@ process_request(int *client)
     const char *resource = "index.html";
     FILE *fp;
     //char path[512]; 
-    size_t nbytes = 0;
+    size_t nbytes = 0, sent, offset;
 
     if (nbytes = read_line(*client, buf, buflen) > 0) {
         PRINT("%s", buf);
@@ -182,9 +182,8 @@ process_request(int *client)
             PRINT("%s", buf);
             /* check for end of HTTP request */
             if (nbytes == CRLFLEN) {
-                if (strncmp(buf, CRLF, nbytes) == 0) {
+                if (strncmp(buf, CRLF, nbytes) == 0)
                     break;
-                }
             }
         }
     }
@@ -194,7 +193,14 @@ process_request(int *client)
         nbytes = fread(file_buf, sizeof(char), APACHE_MAXHEADERLINE, fp);
         file_buf[nbytes] = '\0';
         PRINT("%s\n", file_buf);
-        send(*client, file_buf, nbytes, 0);
+        offset = 0;
+        while ((sent = send(*client, file_buf, nbytes, 0)) > 0 ||
+               (sent == -1 && errno == EINTR)) {
+            if (sent > 0) {
+                offset += sent;
+                nbytes -= sent;
+            }
+        }
         fclose(fp);
     } else {
         send(*client, http404, strlen(http404), 0);
